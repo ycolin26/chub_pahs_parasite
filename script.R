@@ -87,7 +87,7 @@ physeq <- merge_phyloseq(physeq, dna)
 taxa_names(physeq) <- paste0("ASV", seq(ntaxa(physeq)))
 refseq(physeq)
 
-sample_sums(physeq) # number of seqs per sample
+sample_sums(physeq)
 
 #_1.11 Calculating relative abundance #####
 physeq.rel <- transform_sample_counts(physeq, function(OTU) (OTU/sum(OTU)*100))
@@ -106,21 +106,64 @@ load("chub_pahs_parasite_phyloseq.RData")
 physeq@sam_data$PAH <- gsub("0.1X", "CTRL", physeq@sam_data$PAH, fixed=TRUE)
 physeq@sam_data$PAH <- gsub("10X", "PAHs", physeq@sam_data$PAH, fixed=TRUE)
 physeq@sam_data$Parasite_PAH <- paste0(physeq@sam_data$PAH,"_", physeq@sam_data$Parasite)
-physeq@sam_data
 
 #_2.1 rarefaction curves #####
 vegan::rarecurve((otu_table(physeq)), step=500, cex=0.5,
                  xlab="number of reads", ylab="number of ASVs")
 
 #_2.2 alpha diversity indexes #####
-richness<-estimate_richness(physeq, split = TRUE, measures = NULL)
-richness<-cbind(richness, physeq@sam_data)
+physeq = rarefy_even_depth(physeq, sample.size = min(sample_sums(physeq)), replace = F)
+richness<-estimate_richness(physeq, split = TRUE, measures = c("Observed", "Shannon", "Simpson"))
+
+richness=richness[match(rownames(sample_data(physeq)), rownames(richness)),]
+sample_data(physeq)=cbind(sample_data(physeq), richness)
+sample_data(physeq)
 
 richness$PAH <- factor(richness$PAH, levels = c("CTRL", "PAHs"))
 richness$Parasite <- factor(richness$Parasite, levels = c("Uninfected", "Infected"))
 richness$Parasite_PAH <- factor(richness$Parasite_PAH,
-                                levels = c("CTRL_Uninfected", "CTRL_Infected",
-                                           "PAHs_Uninfected", "PAHs_Infected"))
+                                levels = c("CTRL_Uninfected", "CTRL_Infected", "PAHs_Uninfected", "PAHs_Infected"))
+
+library(phyloseq)
+library(dplyr)
+library(stringr)
+library(tidyverse)
+
+sample_data(physeq) %>% 
+  as("matrix") %>%
+  as_tibble(rownames = "OTU") %>%
+  mutate(Observed = as.numeric(Observed),
+         Shannon = as.numeric(Shannon),
+         Simpson = as.numeric(Simpson))%>%
+  select(-Parasite, -PAH) %>%
+  group_by(Parasite_PAH)%>%
+  summarize(mean_obs=mean(Observed), sd_obs=sd(Observed),
+            mean_H=mean(Shannon), sd_H=sd(Shannon),
+            mean_S=mean(Simpson),sd_S=sd(Simpson))
+  
+sample_data(physeq) %>% 
+  as("matrix") %>%
+  as_tibble(rownames = "OTU") %>%
+  mutate(Observed = as.numeric(Observed),
+         Shannon = as.numeric(Shannon),
+         Simpson = as.numeric(Simpson))%>%
+  select(-Parasite_PAH, -PAH) %>%
+  group_by(Parasite)%>%
+  summarize(mean_obs=mean(Observed), sd_obs=sd(Observed),
+            mean_H=mean(Shannon), sd_H=sd(Shannon),
+            mean_S=mean(Simpson),sd_S=sd(Simpson))
+
+sample_data(physeq) %>% 
+  as("matrix") %>%
+  as_tibble(rownames = "OTU") %>%
+  mutate(Observed = as.numeric(Observed),
+         Shannon = as.numeric(Shannon),
+         Simpson = as.numeric(Simpson))%>%
+  select(-Parasite_PAH, -Parasite) %>%
+  group_by(PAH)%>%
+  summarize(mean_obs=mean(Observed), sd_obs=sd(Observed),
+            mean_H=mean(Shannon), sd_H=sd(Shannon),
+            mean_S=mean(Simpson),sd_S=sd(Simpson))
 
 #_2.3 plotting indexes (FIGURE 1) #####
 my_comparisons <- list( c("CTRL_Uninfected", "PAHs_Uninfected"),
@@ -129,7 +172,7 @@ my_comparisons <- list( c("CTRL_Uninfected", "PAHs_Uninfected"),
                         c("PAHs_Uninfected", "PAHs_Infected"),
                         c("PAHs", "CTRL"),
                         c("Uninfected", "Infected"))
-
+richness=sample_data(physeq)
 p0<-ggplot(richness, aes (x = PAH, y = Observed),
            color="black", fill= "grey90", alpha=0.9)+
   geom_violin(trim=T, fill="gray90")+
@@ -141,7 +184,7 @@ p0<-ggplot(richness, aes (x = PAH, y = Observed),
   stat_compare_means(label.y = 1.7, size=3)+
   labs(title = "")+
   theme_bw()+
-  theme(legend.position = "none",
+  theme(legend.position = "none", axis.title.y = element_text(size=9),
         plot.title = element_text(hjust = 0.5, size=10))
 
 p1<-ggplot(richness, aes(x = Parasite, y = Observed),
@@ -155,7 +198,7 @@ p1<-ggplot(richness, aes(x = Parasite, y = Observed),
   stat_compare_means(label.y = 1.7, size=3)+
   labs(title = "")+
   theme_bw() +
-  theme(legend.position = "none",
+  theme(legend.position = "none", axis.title.y = element_text(size=9),
         plot.title = element_text(hjust = 0.5, size=10))
 
 p2<-ggplot(richness, aes(x =PAH, y = Shannon),
@@ -169,7 +212,7 @@ p2<-ggplot(richness, aes(x =PAH, y = Shannon),
   stat_compare_means(label.y = 1, size=3)+
   labs(title = "")+
   theme_bw()+
-  theme(legend.position = "none",
+  theme(legend.position = "none", axis.title.y = element_text(size=9),
         plot.title = element_text(hjust = 0.5, size=10))
 
 
@@ -184,7 +227,7 @@ p3<-ggplot(richness, aes(x = Parasite, y = Shannon),
   stat_compare_means(label.y = 1, size=3)+
   labs(title = "")+
   theme_bw() +
-  theme(legend.position = "none",
+  theme(legend.position = "none", axis.title.y = element_text(size=9),
         plot.title = element_text(hjust = 0.5, size=10))
 
 p4<-ggplot(richness, aes(x=PAH, y=Observed),
@@ -198,7 +241,8 @@ p4<-ggplot(richness, aes(x=PAH, y=Observed),
   stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")+
   stat_compare_means(label.y = 1, size=3)+
   theme_bw()+
-  theme(legend.position = "none", strip.background = element_blank())
+  theme(legend.position = "none", strip.background = element_blank(),
+        axis.title.y = element_text(size=9))
 
 p5<-ggplot(richness, aes(x = PAH, y = Shannon),
            color="black", fill= "grey90", alpha=0.9)+
@@ -212,10 +256,12 @@ p5<-ggplot(richness, aes(x = PAH, y = Shannon),
   stat_compare_means(label.y = 1, size=3)+
   theme_bw() +
   theme(legend.position="right", legend.title=element_blank(),
+        axis.title.y = element_text(size=9),
         strip.background = element_blank())
 
 ggpubr::ggarrange(p1, p0, p4, p3, p2, p5, nrow=2, ncol=3, widths = c(1,1,1.7),
                   labels=c("A", "B", "C", "D", "E", "F"))
+sample_sums(physeq)
 
 ##3 beta diversity #####
 library(ggplot2); packageVersion("ggplot2") #‘3.3.5’
@@ -223,7 +269,6 @@ library(vegan); packageVersion("vegan") #‘2.5.7’
 
 rm(list=ls())
 load("chub_pahs_parasite_phyloseq.RData")
-
 physeq@sam_data$PAH <- gsub("0.1X", "CTRL", physeq@sam_data$PAH, fixed=TRUE)
 physeq@sam_data$PAH <- gsub("10X", "PAHs", physeq@sam_data$PAH, fixed=TRUE)
 physeq@sam_data
@@ -242,7 +287,7 @@ metadata <- as(sample_data(physeq), "data.frame")
 df<-cbind(df, metadata)
 
 ggplot(df, aes(x=X1 , y=X2))+
-  geom_point(aes(shape=PAH, color=Parasite), size=5, alpha=0.8, show.legend=F)+
+  geom_point(aes(shape=PAH, color=Parasite), size=5, alpha=0.8, show.legend=T)+
   scale_color_manual(values=c("#2166AC", "#B2182B"))+
   labs(x = "PCoA1 (30.7%)", y = "PCoA2 (12.3%)") +
   theme_bw()
@@ -260,7 +305,6 @@ var.PAH<-subset(metadata, select=c(PAH))
 
 asv.part<-varpart(decostand(asv, method="hellinger"),
                   var.parasite, var.PAH)
-asv.part
 
 ## 4 Phylum_composition barplot (FIGURE S2 & TABLE S4) ####
 library(phyloseq); packageVersion("phyloseq") #‘1.32.0’
@@ -426,18 +470,17 @@ wilcox_test_PAH_phylum=composite %>%
   select(phylum, p.value, p.adj)
 
 #_5.3 plots #####
-p1<-composite %>%
+p1=composite %>%
   mutate(rel_abund=rel_abund+1/20000,
          phylum=str_replace(phylum, "(.*)", "*\\1*")) %>%
   ggplot(aes(rel_abund, y=phylum, fill=Parasite))+
-  geom_point(size=4, alpha = 0.4, shape=21,
-             position=position_jitter(height=.1, width=0))+
+  geom_boxplot(outlier.size = 0.5, alpha=0.4, lwd=0.2)+
   labs(x="Log10 (Relative Abundances)", y=NULL)+
   scale_fill_manual(values=c("#2166AC", "black"))+
   scale_x_log10()+
   theme_bw()+
   theme(axis.text.y = element_markdown(),
-        axis.title.x = element_text(size=9),
+        axis.title.x = element_blank(),
         legend.title=element_blank(),
         legend.position="top", legend.margin=margin(10,0,0,0),
         legend.box.margin=margin(-10,-10,-10,-10))
@@ -446,9 +489,8 @@ p2<-composite %>%
   mutate(rel_abund=rel_abund+1/20000,
          phylum=str_replace(phylum, "(.*)", "*\\1*")) %>%
   ggplot(aes(rel_abund, y=phylum, fill=PAH))+
-  geom_point(size=4, alpha = 0.4, shape=21,
-             position=position_jitter(height=.1, width=0))+
-  labs(x="Log10 (Relative Abundances)", y=NULL)+
+  geom_boxplot(outlier.size = 0.5, alpha=0.4, lwd=0.2)+
+  labs(x="Log10 (Relative Abundance)", y=NULL)+
   scale_fill_manual(values=c("#2166AC", "black"))+
   scale_x_log10()+
   theme_bw()+
@@ -460,7 +502,6 @@ p2<-composite %>%
 
 ggpubr::ggarrange(p1, p2, nrow=2, heights=c(1,1),
                   labels=c("A", "B"))
-
 
 #6 plot genus abundances & wilcox.test (FIGURE 4 and TABLE S6) #####
 library(phyloseq); packageVersion("phyloseq") #‘1.32.0’
@@ -544,14 +585,13 @@ p3<-composite %>%
   mutate(rel_abund=rel_abund+1/20000,
          genus=str_replace(genus, "(.*)", "*\\1*")) %>%
   ggplot(aes(rel_abund, y=genus, fill=Parasite))+
-  geom_point(size=4, alpha = 0.4, shape=21,
-             position=position_jitter(height=.1, width=0))+
+  geom_boxplot(outlier.size = 0.5, alpha=0.4, lwd=0.2)+
   labs(x="Log10 (Relative Abundances)", y=NULL)+
   scale_fill_manual(values=c("#2166AC", "black"))+
   scale_x_log10()+
   theme_bw()+
   theme(axis.text.y = element_markdown(),
-        axis.title.x = element_text(size=9),
+        axis.title.x = element_blank(),
         legend.title=element_blank(),
         legend.position="top", legend.margin=margin(10,0,0,0),
         legend.box.margin=margin(-10,-10,-10,-10))+
@@ -561,9 +601,8 @@ p4<-composite %>%
   mutate(rel_abund=rel_abund+1/20000,
          genus=str_replace(genus, "(.*)", "*\\1*")) %>%
   ggplot(aes(rel_abund, y=genus, fill=PAH))+
-  geom_point(size=4, alpha = 0.4, shape=21,
-             position=position_jitter(height=.1, width=0))+
-  labs(x="Log10 (Relative Abundances)", y=NULL)+
+  geom_boxplot(outlier.size = 0.5, alpha=0.4, lwd=0.2)+
+  labs(x="Log10 (Relative Abundance)", y=NULL)+
   scale_fill_manual(values=c("#2166AC", "black"))+
   scale_x_log10()+
   theme_bw()+
@@ -576,7 +615,6 @@ p4<-composite %>%
 
 ggpubr::ggarrange(p3, p4, nrow=2, heights=c(1,1),
                   labels=c("A", "B"))
-
 
 #7 plot phyla abundances and associated wilcox.test independently for infected and uninfected chub (FIGURE S3 and TABLE S7) #####
 library(phyloseq); packageVersion("phyloseq") #‘1.32.0’
@@ -646,14 +684,13 @@ p1<-composite %>%
   mutate(rel_abund=rel_abund+1/20000,
          phylum=str_replace(phylum, "(.*)", "*\\1*")) %>%
   ggplot(aes(rel_abund, y=phylum, fill=PAH))+
-  geom_point(size=4, alpha = 0.4, shape=21,
-             position=position_jitter(height=.2, width=0.1))+
+  geom_boxplot(outlier.size = 0.5, alpha=0.4, lwd=0.2)+
   labs(x="Log10 (Relative Abundances)", y=NULL)+
   scale_fill_manual(values=c("#2166AC", "black"))+
   scale_x_log10()+
   theme_bw()+
   theme(axis.text.y = element_markdown(),
-        axis.title.x = element_text(size=9),
+        axis.title.x = element_blank(),
         legend.title=element_blank(),
         legend.position="top", legend.margin=margin(10,0,0,0),
         legend.box.margin=margin(-10,-10,-10,-10))
@@ -714,8 +751,7 @@ p2<-composite %>%
   mutate(rel_abund=rel_abund+1/20000,
          phylum=str_replace(phylum, "(.*)", "*\\1*")) %>%
   ggplot(aes(rel_abund, y=phylum, fill=PAH))+
-  geom_point(size=4, alpha = 0.4, shape=21,
-             position=position_jitter(height=.2, width=0.1))+
+  geom_boxplot(outlier.size = 0.5, alpha=0.4, lwd=0.2)+
   labs(x="Log10 (Relative Abundances)", y=NULL)+
   scale_fill_manual(values=c("#2166AC", "black"))+
   scale_x_log10()+
@@ -725,7 +761,6 @@ p2<-composite %>%
         legend.title=element_blank(),
         legend.position="top", legend.margin=margin(10,0,0,0),
         legend.box.margin=margin(-10,-10,-10,-10))
-p2
 
 ggpubr::ggarrange(p1, p2, nrow=2, heights=c(1,1),
                   labels=c("A - Uninfected", "B - Infected"))
@@ -801,14 +836,13 @@ p1<-composite %>%
   mutate(rel_abund=rel_abund+1/20000,
          genus=str_replace(genus, "(.*)", "*\\1*")) %>%
   ggplot(aes(rel_abund, y=genus, fill=PAH))+
-  geom_point(size=4, alpha = 0.4, shape=21,
-             position=position_jitter(height=.2, width=0.1))+
+  geom_boxplot(outlier.size = 0.5, alpha=0.4, lwd=0.2)+
   labs(x="Log10 (Relative Abundances)", y=NULL)+
   scale_fill_manual(values=c("#2166AC", "black"))+
   scale_x_log10()+
   theme_bw()+
   theme(axis.text.y = element_markdown(),
-        axis.title.x = element_text(size=9),
+        axis.title.x = element_blank(),
         legend.title=element_blank(),
         legend.position="top", legend.margin=margin(10,0,0,0),
         legend.box.margin=margin(-10,-10,-10,-10))
@@ -872,8 +906,7 @@ p2<-composite %>%
   mutate(rel_abund=rel_abund+1/20000,
          genus=str_replace(genus, "(.*)", "*\\1*")) %>%
   ggplot(aes(rel_abund, y=genus, fill=PAH))+
-  geom_point(size=4, alpha = 0.4, shape=21,
-             position=position_jitter(height=.2, width=0.1))+
+  geom_boxplot(outlier.size = 0.5, alpha=0.4, lwd=0.2)+
   labs(x="Log10 (Relative Abundances)", y=NULL)+
   scale_fill_manual(values=c("#2166AC", "black"))+
   scale_x_log10()+
